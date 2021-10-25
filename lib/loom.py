@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # Loom
 class Loom(nn.Module):
@@ -54,7 +55,7 @@ class Loom(nn.Module):
         # kernel_size should have odd and positive integers
         kernel = self.gaussian_kernel2d
         if kernel_size != self.args.kernel_size:
-            kernel = self.get_gaussian_kernel2d(kernel_size)
+            kernel = self.get_gaussian_kernel2d(kernel_size).to(device)
         kernel = kernel.expand(prim_grid.shape[-3], 1, kernel.shape[0], kernel.shape[1])
         # padding = (left, right, top, bottom)
         padding = [kernel_size // 2, kernel_size // 2, kernel_size // 2, kernel_size // 2]

@@ -10,7 +10,7 @@ parser = argparse.ArgumentParser( description='Adversarial attacks')
 parser.add_argument('--cuda',               default='0',            type=str,   help='select gpu on the server. (default: 0)')
 parser.add_argument('--description', '--de',default='default',      type=str,   help='description used to define different model')
 parser.add_argument('--prefix',             default='',             type=str,   help='prefix to specify checkpoints')
-parser.add_argument('--seed',               default=6869,           type=int,   help='random seed')
+parser.add_argument('--seed',               default=5158,           type=int,   help='random seed')
 
 parser.add_argument('--batch-size', '-b',   default=160,            type=int,    help='mini-batch size (default: 160)')
 parser.add_argument('--epochs',             default=80,             type=int,    help='number of total epochs to run')
@@ -23,7 +23,7 @@ parser.add_argument('--target', '-t',       default=None,           type=int,   
 parser.add_argument('--iteration', '-i',    default=4,              type=int,    help='adversarial attack iterations (default: 20)')
 parser.add_argument('--step-size', '--ss',  default=0.005,          type=float,  help='step size for adversarial attacks')
 parser.add_argument('--epsilon',            default=1,              type=float,  help='epsilon for adversarial attacks')
-parser.add_argument('--kernel-size', '-k',  default=13,             type=int,    help='kernel size for adversarial attacks, must be odd integer')
+parser.add_argument('--kernel-size', '-k',  default=11,             type=int,    help='kernel size for adversarial attacks, must be odd integer')
 
 parser.add_argument('--image-size', '--is', default=224,            type=int,    help='image size (default: 224 for ImageNet)')
 parser.add_argument('--dataset-root', '--ds', default='/tmp2/dataset/imagenet/ILSVRC/Data/CLS-LOC', \
@@ -119,21 +119,50 @@ def main():
             if args.target:
                 adv_label = torch.full(label.shape, args.target).to(device)
 
-            # if batch_idx == 1:
+            # if batch_idx == 0:
             #     adv = baseline_1_1(model, loom, optimizer, data, label, \
-            #         args.epsilon, args.step_size, args.iteration, record=True)
+            #         args.epsilon, args.step_size, args.iteration, \
+            #         adv_label=adv_label, record=True)
             # else:
             #     adv = baseline_1_1(model, loom, optimizer, data, label, \
-            #         args.epsilon, args.step_size, args.iteration)
+            #         args.epsilon, args.step_size, args.iteration, \
+            #         adv_label=adv_label)
 
-            if batch_idx == 1:
-                adv = baseline_2_1(model, loom, optimizer, data, label, \
+            # if batch_idx == 0:
+            #     adv = baseline_2_1(model, loom, optimizer, data, label, \
+            #         args.epsilon, args.kernel_size, args.step_size, args.iteration, \
+            #         adv_label=adv_label, record=True)
+            # else:
+            #     adv = baseline_2_1(model, loom, optimizer, data, label, \
+            #         args.epsilon, args.kernel_size, args.step_size, args.iteration, \
+            #         adv_label=adv_label)
+            
+            # if batch_idx == 0:
+            #     adv = baseline_2_2(model, loom, optimizer, data, label, \
+            #         args.epsilon, args.kernel_size, args.step_size, args.iteration, \
+            #         adv_label=adv_label, record=True)
+            # else:
+            #     adv = baseline_2_2(model, loom, optimizer, data, label, \
+            #         args.epsilon, args.kernel_size, args.step_size, args.iteration, \
+            #         adv_label=adv_label)
+
+            if batch_idx == 0:
+                adv = baseline_2_5(model, loom, optimizer, data, label, \
                     args.epsilon, args.kernel_size, args.step_size, args.iteration, \
                     adv_label=adv_label, record=True)
             else:
-                adv = baseline_2_1(model, loom, optimizer, data, label, \
+                adv = baseline_2_5(model, loom, optimizer, data, label, \
                     args.epsilon, args.kernel_size, args.step_size, args.iteration, \
                     adv_label=adv_label)
+
+            # if batch_idx == 0:
+            #     adv = baseline_0_1(model, loom, data, \
+            #         args.epsilon, 128, 11, \
+            #         record=True)
+            # else:
+            #     adv = baseline_0_1(model, loom, data, \
+            #         args.epsilon, 128, 11, \
+            #         )
 
             '''
             Evaluate attack performance
@@ -143,18 +172,40 @@ def main():
                 preds_normal = F.softmax(y_normal, dim=1)
                 preds_top_p, preds_top_class = preds_normal.topk(1, dim=1)
                 correct_normal += (preds_top_class.view(label.shape) == label).sum().item()
+                nor_p, nor_c = preds_top_p, preds_top_class
 
                 y_adv = model(input_normalize(adv))
                 preds_adv = F.softmax(y_adv, dim=1)
                 preds_top_p, preds_top_class = preds_adv.topk(1, dim=1)
                 correct_adv += (preds_top_class.view(label.shape) == label).sum().item()
+                adv_p, adv_c = preds_top_p, preds_top_class
+
                 # target attack
                 if args.target:
                     target_adv += (preds_top_class.view(label.shape) == adv_label).sum().item()
+                # get the prediction for the recorded batch
+                if batch_idx == 0:
+                    # load the class label mapping
+                    classPath = '/tmp2/dataset/imagenet/LOC_synset_mapping.txt'
+                    classes = list()
+                    with open(classPath) as class_file:
+                        for line in class_file:
+                            class_name = line[10:].strip().split(',')[0]
+                            classes.append(class_name)
+                    classes = tuple(classes)
+                    # result
+                    true_label = classes[label[0].cpu().numpy()]
+                    nor_class = classes[int(nor_c[0].cpu().numpy())]
+                    nor_confidence = nor_p[0].cpu().numpy()
+                    adv_class = classes[int(adv_c[0].cpu().numpy())]
+                    adv_confidence = adv_p[0].cpu().numpy()
+                    print('true label: {}'.format(true_label))
+                    print('normal data class: {}, with confidence: {}'.format(nor_class, nor_confidence))
+                    print('adversarial data class: {}, with confidence: {}'.format(adv_class, adv_confidence))
 
                 total += label.size(0)
             
-            if batch_idx == 10:
+            if batch_idx == 50:
                 print('==> early break in testing')
                 break
 
